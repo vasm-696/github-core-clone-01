@@ -389,6 +389,21 @@ async function handleRepo(
     };
   }
 
+  // GET /repos/{o}/{r}/branches/{branch}
+  if (tail.length === 2 && tail[0] === 'branches' && method === 'GET') {
+    const branch = decodeURIComponent(tail[1]);
+    const sha = repo.refs.get(`refs/heads/${branch}`);
+    if (!sha) return notFound('Branch not found');
+    return {
+      status: 200,
+      body: {
+        name: branch,
+        commit: { sha, url: '' },
+        protected: false,
+      },
+    };
+  }
+
   // GET /repos/{o}/{r}/commits[?sha=]
   if (tail.length === 1 && tail[0] === 'commits' && method === 'GET') {
     const ref = url.searchParams.get('sha') ?? repo.defaultBranch;
@@ -399,6 +414,14 @@ async function handleRepo(
     const commits = history(repo, tip).map((sha) => commitJson(repo, sha)).filter((entry): entry is Json => entry !== null);
     const { page } = paginate(commits, url, commits.length);
     return { status: 200, body: page };
+  }
+
+  // GET /repos/{o}/{r}/git/refs/{ref...} — e.g. heads/main
+  if (tail.length >= 3 && tail[0] === 'git' && tail[1] === 'refs' && method === 'GET') {
+    const ref = `refs/${tail.slice(2).map((segment) => decodeURIComponent(segment)).join('/')}`;
+    const sha = repo.refs.get(ref);
+    if (!sha) return notFound('Reference not found');
+    return { status: 200, body: { ref, object: { sha, type: 'commit', url: '' } } };
   }
 
   // POST /repos/{o}/{r}/git/refs
