@@ -41,7 +41,12 @@ function readBody(request: IncomingMessage): Promise<Buffer> {
   });
 }
 
-function jsonResponse(response: ServerResponse, status: number, body: unknown, extraHeaders: Record<string, string> = {}): void {
+function jsonResponse(response: ServerResponse, status: number, body: unknown, extraHeaders: Record<string, string> = {}, empty = false): void {
+  if (empty || status === 204) {
+    response.writeHead(status, { 'x-github-request-id': randomUUID(), ...extraHeaders });
+    response.end();
+    return;
+  }
   const payload = Buffer.from(JSON.stringify(body), 'utf8');
   response.writeHead(status, {
     'content-type': 'application/json',
@@ -66,7 +71,8 @@ function rawResponse(response: ServerResponse, status: number, contentType: stri
 export function createApp(config: ForgeConfig): Server {
   const expectedToken = config.token;
   return createServer(async (request, response) => {
-    const url = new URL(request.url ?? '/', 'http://localhost');
+    const host = request.headers.host ?? 'localhost';
+    const url = new URL(request.url ?? '/', `http://${host}`);
     const method = request.method ?? 'GET';
     try {
       // The env's boot probe: no token, always 200.
@@ -126,7 +132,7 @@ export function createApp(config: ForgeConfig): Server {
       if (url.pathname.startsWith('/api/v3')) {
         const body = method === 'GET' || method === 'HEAD' ? Buffer.alloc(0) : await readBody(request);
         const result = await handleRest(store, method, url, body);
-        jsonResponse(response, result.status, result.body, result.headers);
+        jsonResponse(response, result.status, result.body, result.headers, result.empty);
         return;
       }
       jsonResponse(response, 404, { message: 'Not Found' });
